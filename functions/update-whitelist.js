@@ -29,7 +29,7 @@ exports.handler = async function (event) {
     await fs.writeFile(filePath, html);
 
     const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-    const owner = 'YOUR_GITHUB_USERNAME';
+    const owner = 'vlnezi';
     const repo = 'riskful-whitelist';
     const { data: fileData } = await octokit.repos.getContent({
       owner,
