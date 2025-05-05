@@ -1,5 +1,8 @@
 {
+  "name": "riskful-whitelist",
+  "version": "1.0.0",
+  "description": "Netlify site for Roblox whitelist",
   "dependencies": {
-    "@octokit/rest": "^19.0.0"
+    "@octokit/rest": "^21.0.0"
   }
 }
