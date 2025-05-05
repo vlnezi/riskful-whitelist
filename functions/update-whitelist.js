@@ -3,20 +3,33 @@ const path = require('path');
 
 exports.handler = async function (event) {
   try {
-    // Dynamically import @octokit/rest
-    const { Octokit } = await import('@octokit/rest');
+    // Log raw event body
+    console.log('Raw event body:', event.body);
 
-    // Parse request body
-    const { groupId, secret } = JSON.parse(event.body);
-    console.log('Received groupId:', groupId, 'Secret:', secret);
+    // Validate event.body
+    if (!event.body) {
+      console.log('Error: event.body is empty or undefined');
+      return { statusCode: 400, body: JSON.stringify({ error: 'Empty request body' }) };
+    }
 
-    // Validate secret
+    // Parse JSON
+    let requestBody;
+    try {
+      requestBody = JSON.parse(event.body);
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError.message);
+      return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON', details: parseError.message }) };
+    }
+
+    // Validate groupId and secret
+    const { groupId, secret } = requestBody;
+    console.log('Parsed groupId:', groupId, 'Secret:', secret);
+
     if (secret !== process.env.SECRET_KEY) {
       console.log('Secret mismatch. Expected:', process.env.SECRET_KEY);
       return { statusCode: 403, body: JSON.stringify({ error: 'Wrong secret' }) };
     }
 
-    // Validate groupId
     if (!groupId || isNaN(groupId)) {
       console.log('Invalid groupId:', groupId);
       return { statusCode: 400, body: JSON.stringify({ error: 'Bad group ID' }) };
@@ -30,7 +43,7 @@ exports.handler = async function (event) {
       html = await fs.readFile(filePath, 'utf8');
     } catch (fileError) {
       console.error('File read error:', fileError.message);
-      throw new Error('Failed to read whitelist.html');
+      return { statusCode: 500, body: JSON.stringify({ error: 'Failed to read whitelist.html', details: fileError.message }) };
     }
 
     // Parse HTML for group IDs
@@ -38,7 +51,7 @@ exports.handler = async function (event) {
     const end = html.indexOf('</pre>', start);
     if (start === -1 || end === -1) {
       console.error('Parsing error: <pre id="raw-data"> not found or malformed');
-      throw new Error('Invalid whitelist.html format');
+      return { statusCode: 500, body: JSON.stringify({ error: 'Invalid whitelist.html format' }) };
     }
     let rawData = html.slice(start, end).trim();
     let groupIds = rawData.split('\n').map(id => parseInt(id)).filter(id => !isNaN(id));
@@ -62,10 +75,11 @@ exports.handler = async function (event) {
       console.log('Wrote updated whitelist.html');
     } catch (fileError) {
       console.error('File write error:', fileError.message);
-      throw new Error('Failed to write whitelist.html');
+      return { statusCode: 500, body: JSON.stringify({ error: 'Failed to write whitelist.html', details: fileError.message }) };
     }
 
     // Update GitHub repository
+    const { Octokit } = await import('@octokit/rest');
     const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
     const owner = 'vlnezi';
     const repo = 'riskful-whitelist';
@@ -80,7 +94,7 @@ exports.handler = async function (event) {
       fileData = response.data;
     } catch (githubError) {
       console.error('GitHub getContent error:', githubError.message);
-      throw new Error('Failed to fetch whitelist.html from GitHub');
+      return { statusCode: 500, body: JSON.stringify({ error: 'Failed to fetch whitelist.html from GitHub', details: githubError.message }) };
     }
 
     console.log('Updating GitHub file');
@@ -96,7 +110,7 @@ exports.handler = async function (event) {
       console.log('GitHub file updated');
     } catch (githubError) {
       console.error('GitHub update error:', githubError.message);
-      throw new Error('Failed to update whitelist.html on GitHub');
+      return { statusCode: 500, body: JSON.stringify({ error: 'Failed to update whitelist.html on GitHub', details: githubError.message }) };
     }
 
     return { statusCode: 200, body: JSON.stringify({ message: 'Whitelist updated' }) };
