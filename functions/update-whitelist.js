@@ -1,9 +1,11 @@
 const fs = require('fs').promises;
 const path = require('path');
-const { Octokit } = require('@octokit/rest');
 
 exports.handler = async function (event) {
   try {
+    // Dynamically import @octokit/rest
+    const { Octokit } = await import('@octokit/rest');
+
     const { groupId, secret } = JSON.parse(event.body);
     if (secret !== process.env.SECRET_KEY) {
       return { statusCode: 403, body: JSON.stringify({ error: 'Wrong secret' }) };
@@ -29,7 +31,7 @@ exports.handler = async function (event) {
     await fs.writeFile(filePath, html);
 
     const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-    const owner = 'vlnezi';
+    const owner = 'vlnezivlnezi';
     const repo = 'riskful-whitelist';
     const { data: fileData } = await octokit.repos.getContent({
       owner,
@@ -48,6 +50,7 @@ exports.handler = async function (event) {
 
     return { statusCode: 200, body: JSON.stringify({ message: 'Whitelist updated' }) };
   } catch (error) {
+    console.error('Function error:', error);
     return { statusCode: 500, body: JSON.stringify({ error: 'Something broke' }) };
   }
 };
