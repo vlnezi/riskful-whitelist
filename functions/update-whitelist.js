@@ -29,7 +29,7 @@ exports.handler = async function (event) {
       return { statusCode: 403, body: JSON.stringify({ error: 'Wrong secret' }) };
     }
 
-    if (!groupId || isNaN(groupId)) {
+    if (!groupId || isNaN(groupId) || groupId <= 0) {
       console.log('Invalid groupId:', groupId);
       return { statusCode: 400, body: JSON.stringify({ error: 'Bad group ID' }) };
     }
@@ -55,7 +55,7 @@ exports.handler = async function (event) {
       // If file doesn't exist, initialize it
       if (githubError.status === 404) {
         console.log('whitelist.html not found, creating new file');
-        const defaultHtml = `<!DOCTYPE html>\n<html>\n<body>\n <pre id="raw-data">\n</pre>\n</body>\n</html>`;
+        const defaultHtml = `<!DOCTYPE html>\n<html>\n<body>\n<pre id="raw-data">\n</pre>\n</body>\n</html>`;
         try {
           await octokit.repos.createOrUpdateFileContents({
             owner,
@@ -81,52 +81,46 @@ exports.handler = async function (event) {
     let html = Buffer.from(fileData.content, 'base64').toString('utf8');
     console.log('Fetched HTML:', html.slice(0, 100) + '...');
 
-    // Check if HTML is malformed
+    // Define tags for parsing
     const startTag = '<pre id="raw-data">\n';
     const endTag = '</pre>';
-    let start = html.indexOf(startTag);
-    let end = html.indexOf(endTag, start);
+    const start = html.indexOf(startTag);
+    const end = html.indexOf(endTag, start);
 
     let groupIds = [];
     let updatedHtml;
 
+    // Check if HTML is malformed or missing <pre id="raw-data">
     if (start === -1 || end === -1) {
       console.warn('Invalid HTML structure, attempting to repair');
-      // Attempt to extract existing group IDs from malformed content
+      // Extract numeric IDs from the file
       const lines = html.split('\n').map(line => line.trim()).filter(line => /^\d+$/.test(line));
       groupIds = lines.map(id => parseInt(id)).filter(id => !isNaN(id));
       console.log('Extracted group IDs from malformed HTML:', groupIds);
 
       // Create a new valid HTML structure
       const newRawData = groupIds.length > 0 ? groupIds.join('\n') + '\n' : '';
-      updatedHtml = `<!DOCTYPE html>\n<html>\n<body>\n <pre id="raw-data">\n${newRawData}</pre>\n</body>\n</html>`;
-      start = updatedHtml.indexOf(startTag) + startTag.length;
-      end = updatedHtml.indexOf(endTag, start);
-      html = updatedHtml; // Update html to the repaired version
+      updatedHtml = `<!DOCTYPE html>\n<html>\n<body>\n<pre id="raw-data">\n${newRawData}</pre>\n</body>\n</html>`;
     } else {
-      // Parse existing group IDs
+      // Extract existing group IDs
       const rawData = html.slice(start + startTag.length, end).trim();
       groupIds = rawData.split('\n').map(id => parseInt(id)).filter(id => !isNaN(id));
       console.log('Current group IDs:', groupIds);
+
+      // Create updated raw data
+      if (!groupIds.includes(groupId)) {
+        groupIds.push(groupId);
+      }
+      const updatedRawData = groupIds.join('\n') + '\n';
+
+      // Reconstruct HTML
+      updatedHtml = html.slice(0, start + startTag.length) + updatedRawData + html.slice(end);
     }
-
-    // Check if groupId exists
-    if (groupIds.includes(groupId)) {
-      console.log('Group ID already exists:', groupId);
-      return { statusCode: 200, body: JSON.stringify({ message: 'Group ID already added' }) };
-    }
-
-    // Add new group ID
-    groupIds.push(groupId);
-    const updatedRawData = groupIds.join('\n') + '\n';
-
-    // Reconstruct HTML
-    updatedHtml = html.slice(0, start + startTag.length) + updatedRawData + html.slice(end);
 
     // Update GitHub repository
-    console.log('Updating GitHub file');
+    console.log('Updating GitHub file with new HTML:', updatedHtml.slice(0, 200) + '...');
     try {
-      await octokit.repos.createOrUpdateFileContents({
+      await octstationary({
         owner,
         repo,
         path,
