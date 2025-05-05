@@ -1,6 +1,5 @@
 exports.handler = async function (event) {
   try {
-    // Dynamically import @octokit/rest
     const { Octokit } = await import('@octokit/rest');
 
     // Log raw event body
@@ -61,12 +60,16 @@ exports.handler = async function (event) {
     console.log('Fetched HTML:', html.slice(0, 100) + '...');
 
     // Parse HTML for group IDs
-    const start = html.indexOf('<pre id="raw-data">\n') + 19;
-    const end = html.indexOf('</pre>', start);
+    const startTag = '<pre id="raw-data">\n';
+    const endTag = '</pre>';
+    const start = html.indexOf(startTag) + startTag.length;
+    const end = html.indexOf(endTag, start);
     if (start === -1 || end === -1) {
       console.error('Parsing error: <pre id="raw-data"> not found or malformed');
       return { statusCode: 500, body: JSON.stringify({ error: 'Invalid whitelist.html format' }) };
     }
+
+    // Extract and update raw data
     let rawData = html.slice(start, end).trim();
     let groupIds = rawData.split('\n').map(id => parseInt(id)).filter(id => !isNaN(id));
     console.log('Current group IDs:', groupIds);
@@ -77,11 +80,12 @@ exports.handler = async function (event) {
       return { statusCode: 200, body: JSON.stringify({ message: 'Group ID already added' }) };
     }
 
-    // Update group IDs
+    // Add new group ID
     groupIds.push(groupId);
-    rawData = groupIds.join('\n');
-    html = html.slice(0, start) + rawData + '\n' + html.slice(end);
-    console.log('Updated group IDs:', groupIds);
+    const updatedRawData = groupIds.join('\n');
+
+    // Reconstruct HTML, preserving all content
+    const updatedHtml = html.slice(0, start) + updatedRawData + html.slice(end);
 
     // Update GitHub repository
     console.log('Updating GitHub file');
@@ -91,7 +95,7 @@ exports.handler = async function (event) {
         repo,
         path,
         message: `Add group ID ${groupId}`,
-        content: Buffer.from(html).toString('base64'),
+        content: Buffer.from(updatedHtml).toString('base64'),
         sha: fileData.sha,
       });
       console.log('GitHub file updated');
