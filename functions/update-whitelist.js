@@ -52,27 +52,63 @@ exports.handler = async function (event) {
       fileData = response.data;
     } catch (githubError) {
       console.error('GitHub getContent error:', githubError.message);
-      return { statusCode: 500, body: JSON.stringify({ error: 'Failed to fetch whitelist.html from GitHub', details: githubError.message }) };
+      // If file doesn't exist, initialize it
+      if (githubError.status === 404) {
+        console.log('whitelist.html not found, creating new file');
+        const defaultHtml = `<!DOCTYPE html>\n<html>\n<body>\n <pre id="raw-data">\n</pre>\n</body>\n</html>`;
+        try {
+          await octokit.repos.createOrUpdateFileContents({
+            owner,
+            repo,
+            path,
+            message: 'Initialize whitelist.html',
+            content: Buffer.from(defaultHtml).toString('base64'),
+          });
+          fileData = {
+            content: Buffer.from(defaultHtml).toString('base64'),
+            sha: null, // Will be set on next update
+          };
+        } catch (createError) {
+          console.error('Failed to create whitelist.html:', createError.message);
+          return { statusCode: 500, body: JSON.stringify({ error: 'Failed to create whitelist.html', details: createError.message }) };
+        }
+      } else {
+        return { statusCode: 500, body: JSON.stringify({ error: 'Failed to fetch whitelist.html from GitHub', details: githubError.message }) };
+      }
     }
 
     // Decode file content
     let html = Buffer.from(fileData.content, 'base64').toString('utf8');
     console.log('Fetched HTML:', html.slice(0, 100) + '...');
 
-    // Parse HTML for group IDs
+    // Check if HTML is malformed
     const startTag = '<pre id="raw-data">\n';
     const endTag = '</pre>';
-    const start = html.indexOf(startTag) + startTag.length;
-    const end = html.indexOf(endTag, start);
-    if (start === -1 || end === -1) {
-      console.error('Parsing error: <pre id="raw-data"> not found or malformed');
-      return { statusCode: 500, body: JSON.stringify({ error: 'Invalid whitelist.html format' }) };
-    }
+    let start = html.indexOf(startTag);
+    let end = html.indexOf(endTag, start);
 
-    // Extract and update raw data
-    let rawData = html.slice(start, end).trim();
-    let groupIds = rawData.split('\n').map(id => parseInt(id)).filter(id => !isNaN(id));
-    console.log('Current group IDs:', groupIds);
+    let groupIds = [];
+    let updatedHtml;
+
+    if (start === -1 || end === -1) {
+      console.warn('Invalid HTML structure, attempting to repair');
+      // Attempt to extract existing group IDs from malformed content
+      const lines = html.split('\n').map(line => line.trim()).filter(line => /^\d+$/.test(line));
+      groupIds = lines.map(id => parseInt(id)).filter(id => !isNaN(id));
+      console.log('Extracted group IDs from malformed HTML:', groupIds);
+
+      // Create a new valid HTML structure
+      const newRawData = groupIds.length > 0 ? groupIds.join('\n') + '\n' : '';
+      updatedHtml = `<!DOCTYPE html>\n<html>\n<body>\n <pre id="raw-data">\n${newRawData}</pre>\n</body>\n</html>`;
+      start = updatedHtml.indexOf(startTag) + startTag.length;
+      end = updatedHtml.indexOf(endTag, start);
+      html = updatedHtml; // Update html to the repaired version
+    } else {
+      // Parse existing group IDs
+      const rawData = html.slice(start + startTag.length, end).trim();
+      groupIds = rawData.split('\n').map(id => parseInt(id)).filter(id => !isNaN(id));
+      console.log('Current group IDs:', groupIds);
+    }
 
     // Check if groupId exists
     if (groupIds.includes(groupId)) {
@@ -82,10 +118,10 @@ exports.handler = async function (event) {
 
     // Add new group ID
     groupIds.push(groupId);
-    const updatedRawData = groupIds.join('\n');
+    const updatedRawData = groupIds.join('\n') + '\n';
 
-    // Reconstruct HTML, preserving all content
-    const updatedHtml = html.slice(0, start) + updatedRawData + html.slice(end);
+    // Reconstruct HTML
+    updatedHtml = html.slice(0, start + startTag.length) + updatedRawData + html.slice(end);
 
     // Update GitHub repository
     console.log('Updating GitHub file');
