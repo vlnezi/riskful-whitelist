@@ -1,8 +1,8 @@
-const fs = require('fs').promises;
-const path = require('path');
-
 exports.handler = async function (event) {
   try {
+    // Dynamically import @octokit/rest
+    const { Octokit } = await import('@octokit/rest');
+
     // Log raw event body
     console.log('Raw event body:', event.body);
 
@@ -35,16 +35,30 @@ exports.handler = async function (event) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Bad group ID' }) };
     }
 
-    // Read whitelist.html
-    const filePath = path.join(__dirname, '../whitelist.html');
-    console.log('Reading file:', filePath);
-    let html;
+    // Initialize Octokit
+    const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+    const owner = 'vlnezi';
+    const repo = 'riskful-whitelist';
+    const path = 'whitelist.html';
+
+    // Fetch whitelist.html from GitHub
+    console.log('Fetching GitHub file:', owner, repo, path);
+    let fileData;
     try {
-      html = await fs.readFile(filePath, 'utf8');
-    } catch (fileError) {
-      console.error('File read error:', fileError.message);
-      return { statusCode: 500, body: JSON.stringify({ error: 'Failed to read whitelist.html', details: fileError.message }) };
+      const response = await octokit.repos.getContent({
+        owner,
+        repo,
+        path,
+      });
+      fileData = response.data;
+    } catch (githubError) {
+      console.error('GitHub getContent error:', githubError.message);
+      return { statusCode: 500, body: JSON.stringify({ error: 'Failed to fetch whitelist.html from GitHub', details: githubError.message }) };
     }
+
+    // Decode file content
+    let html = Buffer.from(fileData.content, 'base64').toString('utf8');
+    console.log('Fetched HTML:', html.slice(0, 100) + '...');
 
     // Parse HTML for group IDs
     const start = html.indexOf('<pre id="raw-data">\n') + 19;
@@ -69,40 +83,13 @@ exports.handler = async function (event) {
     html = html.slice(0, start) + rawData + '\n' + html.slice(end);
     console.log('Updated group IDs:', groupIds);
 
-    // Write updated HTML
-    try {
-      await fs.writeFile(filePath, html);
-      console.log('Wrote updated whitelist.html');
-    } catch (fileError) {
-      console.error('File write error:', fileError.message);
-      return { statusCode: 500, body: JSON.stringify({ error: 'Failed to write whitelist.html', details: fileError.message }) };
-    }
-
     // Update GitHub repository
-    const { Octokit } = await import('@octokit/rest');
-    const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-    const owner = 'vlnezi';
-    const repo = 'riskful-whitelist';
-    console.log('Fetching GitHub file:', owner, repo, 'whitelist.html');
-    let fileData;
-    try {
-      const response = await octokit.repos.getContent({
-        owner,
-        repo,
-        path: 'whitelist.html',
-      });
-      fileData = response.data;
-    } catch (githubError) {
-      console.error('GitHub getContent error:', githubError.message);
-      return { statusCode: 500, body: JSON.stringify({ error: 'Failed to fetch whitelist.html from GitHub', details: githubError.message }) };
-    }
-
     console.log('Updating GitHub file');
     try {
       await octokit.repos.createOrUpdateFileContents({
         owner,
         repo,
-        path: 'whitelist.html',
+        path,
         message: `Add group ID ${groupId}`,
         content: Buffer.from(html).toString('base64'),
         sha: fileData.sha,
