@@ -120,7 +120,7 @@ exports.handler = async function (event) {
     // Update GitHub repository
     console.log('Updating GitHub file with new HTML:', updatedHtml.slice(0, 200) + '...');
     try {
-      await octstationary({
+      await octokit.repos.createOrUpdateFileContents({
         owner,
         repo,
         path,
