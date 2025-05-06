@@ -30,7 +30,7 @@ exports.handler = async function (event) {
           repo: 'riskful-whitelist',
           path: 'whitelist.html',
           message: 'Reset whitelist.html',
-          content: Buffer.from(defaultHtml).toString('base64'),
+          content: Buffer.from(defaultHtml, 'utf8').toString('base64'),
           sha: null,
         });
         console.log('Whitelist reset to:', JSON.stringify(defaultHtml));
@@ -83,10 +83,10 @@ exports.handler = async function (event) {
             repo,
             path,
             message: 'Initialize whitelist.html',
-            content: Buffer.from(defaultHtml).toString('base64'),
+            content: Buffer.from(defaultHtml, 'utf8').toString('base64'),
           });
           fileData = {
-            content: Buffer.from(defaultHtml).toString('base64'),
+            content: Buffer.from(defaultHtml, 'utf8').toString('base64'),
             sha: null,
           };
         } catch (createError) {
@@ -153,8 +153,9 @@ exports.handler = async function (event) {
     // Reconstruct HTML with exact formatting
     updatedHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n${updatedRawData}</pre>\n</body>\n</html>`;
 
-    // Log the exact updated HTML for debugging
+    // Log the exact updated HTML for debugging (including hex for hidden characters)
     console.log('Updated HTML (raw):', JSON.stringify(updatedHtml));
+    console.log('Updated HTML (hex):', Buffer.from(updatedHtml, 'utf8').toString('hex'));
 
     // Update GitHub repository
     try {
@@ -163,7 +164,7 @@ exports.handler = async function (event) {
         repo,
         path,
         message: removeGroupId ? `Remove group ID ${removeGroupId}` : `Add group ID ${groupId}`,
-        content: Buffer.from(updatedHtml).toString('base64'),
+        content: Buffer.from(updatedHtml, 'utf8').toString('base64'),
         sha: fileData.sha,
       });
       console.log('GitHub file updated');
