@@ -33,7 +33,7 @@ exports.handler = async function (event) {
           content: Buffer.from(defaultHtml).toString('base64'),
           sha: null,
         });
-        console.log('Whitelist reset to:', defaultHtml);
+        console.log('Whitelist reset to:', JSON.stringify(defaultHtml));
         return { statusCode: 200, body: JSON.stringify({ message: 'Whitelist reset' }) };
       } catch (error) {
         console.error('Reset error:', error.message);
@@ -117,7 +117,7 @@ exports.handler = async function (event) {
       groupIds = lines.map(id => parseInt(id)).filter(id => !isNaN(id));
       console.log('Extracted group IDs from malformed HTML:', groupIds);
 
-      const newRawData = groupIds.length > 0 ? groupIds.join('\n') : '';
+      const newRawData = groupIds.length > 0 ? groupIds.join('\n') + '\n' : '';
       updatedHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n${newRawData}</pre>\n</body>\n</html>`;
     } else {
       // Extract existing group IDs
@@ -130,8 +130,8 @@ exports.handler = async function (event) {
         groupIds.push(groupId);
       }
 
-      // Create updated raw data without trailing newline
-      const updatedRawData = groupIds.join('\n');
+      // Create updated raw data with trailing newline
+      const updatedRawData = groupIds.join('\n') + '\n';
 
       // Reconstruct HTML
       updatedHtml = html.slice(0, start + startTag.length) + updatedRawData + html.slice(end);
