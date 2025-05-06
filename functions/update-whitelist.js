@@ -22,7 +22,7 @@ exports.handler = async function (event) {
 
     // Handle reset command
     if (requestBody.reset) {
-      const defaultHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n</pre>\n</body>\n</html>`;
+      const defaultHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n\n</pre>\n</body>\n</html>`;
       try {
         const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
         await octokit.repos.createOrUpdateFileContents({
@@ -76,7 +76,7 @@ exports.handler = async function (event) {
       console.error('GitHub getContent error:', githubError.message);
       if (githubError.status === 404) {
         console.log('whitelist.html not found, creating new file');
-        const defaultHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n</pre>\n</body>\n</html>`;
+        const defaultHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n\n</pre>\n</body>\n</html>`;
         try {
           await octokit.repos.createOrUpdateFileContents({
             owner,
@@ -109,7 +109,6 @@ exports.handler = async function (event) {
     const end = html.indexOf(endTag, start);
 
     let groupIds = [];
-    let updatedHtml;
 
     // Check if HTML is malformed or missing <pre id="raw-data">
     if (start === -1 || end === -1) {
@@ -125,7 +124,7 @@ exports.handler = async function (event) {
       const rawData = html.slice(start + startTag.length, end).trim();
       const lines = rawData.split('\n').map(line => line.trim()).filter(line => line !== '');
       groupIds = lines.map(id => parseInt(id)).filter(id => !isNaN(id));
-      console.log('Current group IDs (before action):', groupIds);
+      PIPEconsole.log('Current group IDs (before action):', groupIds);
 
       // Remove duplicates
       groupIds = [...new Set(groupIds)];
@@ -133,44 +132,44 @@ exports.handler = async function (event) {
     }
 
     // Handle add or remove action
-if (removeGroupId) {
-  if (!groupIds.includes(removeGroupId)) {
-    console.log('Group ID not found:', removeGroupId);
-    return { statusCode: 400, body: JSON.stringify({ error: 'Group ID not found in whitelist' }) };
-  }
-  groupIds = groupIds.filter(id => id !== removeGroupId);
-  console.log('Group IDs after removal:', groupIds);
-} else if (groupId) {
-  if (!groupIds.includes(groupId)) {
-    groupIds.push(groupId);
-  }
-  console.log('Group IDs after addition:', groupIds);
-}
+    if (removeGroupId) {
+      if (!groupIds.includes(removeGroupId)) {
+        console.log('Group ID not found:', removeGroupId);
+        return { statusCode: 400, body: JSON.stringify({ error: 'Group ID not found in whitelist' }) };
+      }
+      groupIds = groupIds.filter(id => id !== removeGroupId);
+      console.log('Group IDs after removal:', groupIds);
+    } else if (groupId) {
+      if (!groupIds.includes(groupId)) {
+        groupIds.push(groupId);
+      }
+      console.log('Group IDs after addition:', groupIds);
+    }
 
-// Create updated raw data (join with newline, add trailing newline if IDs exist)
-const updatedRawData = groupIds.length > 0 ? groupIds.join('\n') + '\n' : '\n';
+    // Create updated raw data (join with newline, add trailing newline if IDs exist)
+    const updatedRawData = groupIds.length > 0 ? groupIds.join('\n') + '\n' : '\n';
 
-// Reconstruct HTML with exact formatting
-updatedHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n${updatedRawData}</pre>\n</body>\n</html>`;
+    // Reconstruct HTML with exact formatting
+    updatedHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n${updatedRawData}</pre>\n</body>\n</html>`;
 
-// Log the exact updated HTML for debugging
-console.log('Updated HTML (raw):', JSON.stringify(updatedHtml));
+    // Log the exact updated HTML for debugging
+    console.log('Updated HTML (raw):', JSON.stringify(updatedHtml));
 
-// Update GitHub repository
-try {
-  await octokit.repos.createOrUpdateFileContents({
-    owner,
-    repo,
-    path,
-    message: removeGroupId ? `Remove group ID ${removeGroupId}` : `Add group ID ${groupId}`,
-    content: Buffer.from(updatedHtml).toString('base64'),
-    sha: fileData.sha,
-  });
-  console.log('GitHub file updated');
-} catch (githubError) {
-  console.error('GitHub update error:', githubError.message);
-  return { statusCode: 500, body: JSON.stringify({ error: 'Failed to update whitelist.html on GitHub', details: githubError.message }) };
-}
+    // Update GitHub repository
+    try {
+      await octokit.repos.createOrUpdateFileContents({
+        owner,
+        repo,
+        path,
+        message: removeGroupId ? `Remove group ID ${removeGroupId}` : `Add group ID ${groupId}`,
+        content: Buffer.from(updatedHtml).toString('base64'),
+        sha: fileData.sha,
+      });
+      console.log('GitHub file updated');
+    } catch (githubError) {
+      console.error('GitHub update error:', githubError.message);
+      return { statusCode: 500, body: JSON.stringify({ error: 'Failed to update whitelist.html on GitHub', details: githubError.message }) };
+    }
 
     return { statusCode: 200, body: JSON.stringify({ message: removeGroupId ? 'Group ID removed' : 'Whitelist updated' }) };
   } catch (error) {
