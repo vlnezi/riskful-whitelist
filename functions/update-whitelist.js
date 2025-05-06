@@ -133,44 +133,44 @@ exports.handler = async function (event) {
     }
 
     // Handle add or remove action
-    if (removeGroupId) {
-      if (!groupIds.includes(removeGroupId)) {
-        console.log('Group ID not found:', removeGroupId);
-        return { statusCode: 400, body: JSON.stringify({ error: 'Group ID not found in whitelist' }) };
-      }
-      groupIds = groupIds.filter(id => id !== removeGroupId);
-      console.log('Group IDs after removal:', groupIds);
-    } else if (groupId) {
-      if (!groupIds.includes(groupId)) {
-        groupIds.push(groupId);
-      }
-      console.log('Group IDs after addition:', groupIds);
-    }
+if (removeGroupId) {
+  if (!groupIds.includes(removeGroupId)) {
+    console.log('Group ID not found:', removeGroupId);
+    return { statusCode: 400, body: JSON.stringify({ error: 'Group ID not found in whitelist' }) };
+  }
+  groupIds = groupIds.filter(id => id !== removeGroupId);
+  console.log('Group IDs after removal:', groupIds);
+} else if (groupId) {
+  if (!groupIds.includes(groupId)) {
+    groupIds.push(groupId);
+  }
+  console.log('Group IDs after addition:', groupIds);
+}
 
-    // Create updated raw data (join with newline, add trailing newline if IDs exist)
-    const updatedRawData = groupIds.length > 0 ? groupIds.join('\n') + '\n' : '';
+// Create updated raw data (join with newline, add trailing newline if IDs exist)
+const updatedRawData = groupIds.length > 0 ? groupIds.join('\n') + '\n' : '\n';
 
-    // Reconstruct HTML with exact formatting
-    updatedHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n${updatedRawData}</pre>\n</body>\n</html>`;
+// Reconstruct HTML with exact formatting
+updatedHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n${updatedRawData}</pre>\n</body>\n</html>`;
 
-    // Log the exact updated HTML for debugging
-    console.log('Updated HTML (raw):', JSON.stringify(updatedHtml));
+// Log the exact updated HTML for debugging
+console.log('Updated HTML (raw):', JSON.stringify(updatedHtml));
 
-    // Update GitHub repository
-    try {
-      await octokit.repos.createOrUpdateFileContents({
-        owner,
-        repo,
-        path,
-        message: removeGroupId ? `Remove group ID ${removeGroupId}` : `Add group ID ${groupId}`,
-        content: Buffer.from(updatedHtml).toString('base64'),
-        sha: fileData.sha,
-      });
-      console.log('GitHub file updated');
-    } catch (githubError) {
-      console.error('GitHub update error:', githubError.message);
-      return { statusCode: 500, body: JSON.stringify({ error: 'Failed to update whitelist.html on GitHub', details: githubError.message }) };
-    }
+// Update GitHub repository
+try {
+  await octokit.repos.createOrUpdateFileContents({
+    owner,
+    repo,
+    path,
+    message: removeGroupId ? `Remove group ID ${removeGroupId}` : `Add group ID ${groupId}`,
+    content: Buffer.from(updatedHtml).toString('base64'),
+    sha: fileData.sha,
+  });
+  console.log('GitHub file updated');
+} catch (githubError) {
+  console.error('GitHub update error:', githubError.message);
+  return { statusCode: 500, body: JSON.stringify({ error: 'Failed to update whitelist.html on GitHub', details: githubError.message }) };
+}
 
     return { statusCode: 200, body: JSON.stringify({ message: removeGroupId ? 'Group ID removed' : 'Whitelist updated' }) };
   } catch (error) {
