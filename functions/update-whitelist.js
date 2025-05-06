@@ -22,7 +22,7 @@ exports.handler = async function (event) {
 
     // Handle reset command
     if (requestBody.reset) {
-      const defaultHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n\n</pre>\n</body>\n</html>`;
+      const defaultHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n</pre>\n</body>\n</html>`;
       try {
         const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
         await octokit.repos.createOrUpdateFileContents({
@@ -76,7 +76,7 @@ exports.handler = async function (event) {
       console.error('GitHub getContent error:', githubError.message);
       if (githubError.status === 404) {
         console.log('whitelist.html not found, creating new file');
-        const defaultHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n\n</pre>\n</body>\n</html>`;
+        const defaultHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n</pre>\n</body>\n</html>`;
         try {
           await octokit.repos.createOrUpdateFileContents({
             owner,
@@ -120,6 +120,9 @@ exports.handler = async function (event) {
 
       // Remove duplicates
       groupIds = [...new Set(groupIds)];
+
+      const newRawData = groupIds.length > 0 ? groupIds.join('\n') : '';
+      updatedHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n${newRawData}</pre>\n</body>\n</html>`;
     } else {
       // Extract existing group IDs
       const rawData = html.slice(start + startTag.length, end).trim();
@@ -130,32 +133,31 @@ exports.handler = async function (event) {
       // Remove duplicates
       groupIds = [...new Set(groupIds)];
       console.log('Deduplicated group IDs:', groupIds);
+
+      // Handle add or remove action
+      if (removeGroupId) {
+        if (!groupIds.includes(removeGroupId)) {
+          console.log('Group ID not found:', removeGroupId);
+          return { statusCode: 400, body: JSON.stringify({ error: 'Group ID not found in whitelist' }) };
+        }
+        groupIds = groupIds.filter(id => id !== removeGroupId);
+        console.log('Group IDs after removal:', groupIds);
+      } else if (groupId) {
+        if (!groupIds.includes(groupId)) {
+          groupIds.push(groupId);
+        }
+        console.log('Group IDs after addition:', groupIds);
+      }
+
+      // Create updated raw data (no trailing newline to match working format)
+      const updatedRawData = groupIds.length > 0 ? groupIds.join('\n') : '';
+
+      // Reconstruct HTML
+      updatedHtml = html.slice(0, start + startTag.length) + updatedRawData + html.slice(end);
     }
 
-    // Handle add or remove action
-    if (removeGroupId) {
-      if (!groupIds.includes(removeGroupId)) {
-        console.log('Group ID not found:', removeGroupId);
-        return { statusCode: 400, body: JSON.stringify({ error: 'Group ID not found in whitelist' }) };
-      }
-      groupIds = groupIds.filter(id => id !== removeGroupId);
-      console.log('Group IDs after removal:', groupIds);
-    } else if (groupId) {
-      if (!groupIds.includes(groupId)) {
-        groupIds.push(groupId);
-      }
-      console.log('Group IDs after addition:', groupIds);
-    }
-
-    // Create updated raw data (join with newline, add trailing newline if IDs exist)
-    const updatedRawData = groupIds.length > 0 ? groupIds.join('\n') + '\n' : '\n';
-
-    // Reconstruct HTML with exact formatting
-    updatedHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n${updatedRawData}</pre>\n</body>\n</html>`;
-
-    // Log the exact updated HTML for debugging (including hex for hidden characters)
+    // Log the exact updated HTML for debugging
     console.log('Updated HTML (raw):', JSON.stringify(updatedHtml));
-    console.log('Updated HTML (hex):', Buffer.from(updatedHtml, 'utf8').toString('hex'));
 
     // Update GitHub repository
     try {
