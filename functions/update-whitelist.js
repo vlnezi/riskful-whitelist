@@ -31,8 +31,9 @@ exports.handler = async function (event) {
           path: 'whitelist.html',
           message: 'Reset whitelist.html',
           content: Buffer.from(defaultHtml).toString('base64'),
-          sha: null, // Will create new file or overwrite
+          sha: null,
         });
+        console.log('Whitelist reset to:', defaultHtml);
         return { statusCode: 200, body: JSON.stringify({ message: 'Whitelist reset' }) };
       } catch (error) {
         console.error('Reset error:', error.message);
@@ -72,7 +73,6 @@ exports.handler = async function (event) {
       fileData = response.data;
     } catch (githubError) {
       console.error('GitHub getContent error:', githubError.message);
-      // If file doesn't exist, initialize it
       if (githubError.status === 404) {
         console.log('whitelist.html not found, creating new file');
         const defaultHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n</pre>\n</body>\n</html>`;
@@ -86,7 +86,7 @@ exports.handler = async function (event) {
           });
           fileData = {
             content: Buffer.from(defaultHtml).toString('base64'),
-            sha: null, // Will be set on next update
+            sha: null,
           };
         } catch (createError) {
           console.error('Failed to create whitelist.html:', createError.message);
@@ -99,7 +99,7 @@ exports.handler = async function (event) {
 
     // Decode file content
     let html = Buffer.from(fileData.content, 'base64').toString('utf8');
-    console.log('Fetched HTML:', html.slice(0, 100) + '...');
+    console.log('Fetched HTML (raw):', JSON.stringify(html));
 
     // Define tags for parsing
     const startTag = '<pre id="raw-data">\n';
@@ -113,13 +113,11 @@ exports.handler = async function (event) {
     // Check if HTML is malformed or missing <pre id="raw-data">
     if (start === -1 || end === -1) {
       console.warn('Invalid HTML structure, attempting to repair');
-      // Extract numeric IDs from the file
       const lines = html.split('\n').map(line => line.trim()).filter(line => /^\d+$/.test(line));
       groupIds = lines.map(id => parseInt(id)).filter(id => !isNaN(id));
       console.log('Extracted group IDs from malformed HTML:', groupIds);
 
-      // Create a new valid HTML structure
-      const newRawData = groupIds.length > 0 ? groupIds.join('\n') + '\n' : '';
+      const newRawData = groupIds.length > 0 ? groupIds.join('\n') : '';
       updatedHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n${newRawData}</pre>\n</body>\n</html>`;
     } else {
       // Extract existing group IDs
@@ -127,18 +125,22 @@ exports.handler = async function (event) {
       groupIds = rawData.split('\n').map(id => parseInt(id)).filter(id => !isNaN(id));
       console.log('Current group IDs:', groupIds);
 
-      // Create updated raw data
+      // Add new group ID if not already present
       if (!groupIds.includes(groupId)) {
         groupIds.push(groupId);
       }
-      const updatedRawData = groupIds.join('\n') + '\n';
+
+      // Create updated raw data without trailing newline
+      const updatedRawData = groupIds.join('\n');
 
       // Reconstruct HTML
       updatedHtml = html.slice(0, start + startTag.length) + updatedRawData + html.slice(end);
     }
 
+    // Log the exact updated HTML for debugging
+    console.log('Updated HTML (raw):', JSON.stringify(updatedHtml));
+
     // Update GitHub repository
-    console.log('Updating GitHub file with new HTML:', updatedHtml.slice(0, 200) + '...');
     try {
       await octokit.repos.createOrUpdateFileContents({
         owner,
