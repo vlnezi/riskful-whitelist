@@ -20,6 +20,26 @@ exports.handler = async function (event) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON', details: parseError.message }) };
     }
 
+    // Handle reset command
+    if (requestBody.reset) {
+      const defaultHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n</pre>\n</body>\n</html>`;
+      try {
+        const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+        await octokit.repos.createOrUpdateFileContents({
+          owner: 'vlnezi',
+          repo: 'riskful-whitelist',
+          path: 'whitelist.html',
+          message: 'Reset whitelist.html',
+          content: Buffer.from(defaultHtml).toString('base64'),
+          sha: null, // Will create new file or overwrite
+        });
+        return { statusCode: 200, body: JSON.stringify({ message: 'Whitelist reset' }) };
+      } catch (error) {
+        console.error('Reset error:', error.message);
+        return { statusCode: 500, body: JSON.stringify({ error: 'Failed to reset whitelist', details: error.message }) };
+      }
+    }
+
     // Validate groupId and secret
     const { groupId, secret } = requestBody;
     console.log('Parsed groupId:', groupId, 'Secret:', secret);
@@ -29,7 +49,7 @@ exports.handler = async function (event) {
       return { statusCode: 403, body: JSON.stringify({ error: 'Wrong secret' }) };
     }
 
-    if (!groupId || isNaN(groupId) || groupId <= 0) {
+    if (!groupId || isNaN(groupId) || groupId < 0) {
       console.log('Invalid groupId:', groupId);
       return { statusCode: 400, body: JSON.stringify({ error: 'Bad group ID' }) };
     }
@@ -55,7 +75,7 @@ exports.handler = async function (event) {
       // If file doesn't exist, initialize it
       if (githubError.status === 404) {
         console.log('whitelist.html not found, creating new file');
-        const defaultHtml = `<!DOCTYPE html>\n<html>\n<body>\n<pre id="raw-data">\n</pre>\n</body>\n</html>`;
+        const defaultHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n</pre>\n</body>\n</html>`;
         try {
           await octokit.repos.createOrUpdateFileContents({
             owner,
@@ -100,7 +120,7 @@ exports.handler = async function (event) {
 
       // Create a new valid HTML structure
       const newRawData = groupIds.length > 0 ? groupIds.join('\n') + '\n' : '';
-      updatedHtml = `<!DOCTYPE html>\n<html>\n<body>\n<pre id="raw-data">\n${newRawData}</pre>\n</body>\n</html>`;
+      updatedHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n${newRawData}</pre>\n</body>\n</html>`;
     } else {
       // Extract existing group IDs
       const rawData = html.slice(start + startTag.length, end).trim();
