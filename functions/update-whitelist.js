@@ -1,3 +1,5 @@
+const axios = require('axios');
+
 exports.handler = async function (event) {
   try {
     const { Octokit } = await import('@octokit/rest');
@@ -54,6 +56,20 @@ exports.handler = async function (event) {
     if (!actionId || isNaN(actionId) || actionId < 0) {
       console.log('Invalid ID:', actionId);
       return { statusCode: 400, body: JSON.stringify({ error: 'Bad group ID' }) };
+    }
+
+    // Validate groupId with Roblox API (for add action)
+    if (groupId) {
+      try {
+        const response = await axios.get(`https://groups.roblox.com/v1/groups/${groupId}`);
+        if (!response.data || response.data.id !== groupId) {
+          console.log('Invalid Roblox group ID:', groupId);
+          return { statusCode: 400, body: JSON.stringify({ error: 'Invalid Roblox group ID' }) };
+        }
+      } catch (error) {
+        console.error('Roblox API error:', error.message);
+        return { statusCode: 400, body: JSON.stringify({ error: 'Failed to validate group ID with Roblox API' }) };
+      }
     }
 
     // Initialize Octokit
