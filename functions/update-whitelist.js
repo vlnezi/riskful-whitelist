@@ -118,13 +118,21 @@ exports.handler = async function (event) {
       groupIds = lines.map(id => parseInt(id)).filter(id => !isNaN(id));
       console.log('Extracted group IDs from malformed HTML:', groupIds);
 
+      // Remove duplicates
+      groupIds = [...new Set(groupIds)];
+
       const newRawData = groupIds.length > 0 ? groupIds.join('\n') : '';
       updatedHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n${newRawData}</pre>\n</body>\n</html>`;
     } else {
       // Extract existing group IDs
       const rawData = html.slice(start + startTag.length, end).trim();
-      groupIds = rawData.split('\n').map(id => parseInt(id)).filter(id => !isNaN(id));
-      console.log('Current group IDs:', groupIds);
+      const lines = rawData.split('\n').map(line => line.trim()).filter(line => line !== '');
+      groupIds = lines.map(id => parseInt(id)).filter(id => !isNaN(id));
+      console.log('Current group IDs (before action):', groupIds);
+
+      // Remove duplicates
+      groupIds = [...new Set(groupIds)];
+      console.log('Deduplicated group IDs:', groupIds);
 
       // Handle add or remove action
       if (removeGroupId) {
@@ -133,13 +141,15 @@ exports.handler = async function (event) {
           return { statusCode: 400, body: JSON.stringify({ error: 'Group ID not found in whitelist' }) };
         }
         groupIds = groupIds.filter(id => id !== removeGroupId);
+        console.log('Group IDs after removal:', groupIds);
       } else if (groupId) {
         if (!groupIds.includes(groupId)) {
           groupIds.push(groupId);
         }
+        console.log('Group IDs after addition:', groupIds);
       }
 
-      // Create updated raw data (no trailing newline to match current working format)
+      // Create updated raw data (no trailing newline to match working format)
       const updatedRawData = groupIds.length > 0 ? groupIds.join('\n') : '';
 
       // Reconstruct HTML
