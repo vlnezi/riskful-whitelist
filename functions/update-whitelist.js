@@ -109,6 +109,7 @@ exports.handler = async function (event) {
     const end = html.indexOf(endTag, start);
 
     let groupIds = [];
+    let updatedHtml;
 
     // Check if HTML is malformed or missing <pre id="raw-data">
     if (start === -1 || end === -1) {
@@ -124,7 +125,7 @@ exports.handler = async function (event) {
       const rawData = html.slice(start + startTag.length, end).trim();
       const lines = rawData.split('\n').map(line => line.trim()).filter(line => line !== '');
       groupIds = lines.map(id => parseInt(id)).filter(id => !isNaN(id));
-      PIPEconsole.log('Current group IDs (before action):', groupIds);
+      console.log('Current group IDs (before action):', groupIds);
 
       // Remove duplicates
       groupIds = [...new Set(groupIds)];
