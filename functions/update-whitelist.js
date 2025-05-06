@@ -41,17 +41,18 @@ exports.handler = async function (event) {
       }
     }
 
-    // Validate groupId and secret
-    const { groupId, secret } = requestBody;
-    console.log('Parsed groupId:', groupId, 'Secret:', secret);
+    // Validate secret and action
+    const { groupId, removeGroupId, secret } = requestBody;
+    console.log('Parsed groupId:', groupId, 'removeGroupId:', removeGroupId, 'Secret:', secret);
 
     if (secret !== process.env.SECRET_KEY) {
       console.log('Secret mismatch. Expected:', process.env.SECRET_KEY);
       return { statusCode: 403, body: JSON.stringify({ error: 'Wrong secret' }) };
     }
 
-    if (!groupId || isNaN(groupId) || groupId < 0) {
-      console.log('Invalid groupId:', groupId);
+    const actionId = groupId || removeGroupId;
+    if (!actionId || isNaN(actionId) || actionId < 0) {
+      console.log('Invalid ID:', actionId);
       return { statusCode: 400, body: JSON.stringify({ error: 'Bad group ID' }) };
     }
 
@@ -117,7 +118,7 @@ exports.handler = async function (event) {
       groupIds = lines.map(id => parseInt(id)).filter(id => !isNaN(id));
       console.log('Extracted group IDs from malformed HTML:', groupIds);
 
-      const newRawData = groupIds.length > 0 ? groupIds.join('\n') + '\n' : '';
+      const newRawData = groupIds.length > 0 ? groupIds.join('\n') : '';
       updatedHtml = `<!-- Raw data for the script, hidden from browser view -->\n<pre id="raw-data">\n${newRawData}</pre>\n</body>\n</html>`;
     } else {
       // Extract existing group IDs
@@ -125,13 +126,21 @@ exports.handler = async function (event) {
       groupIds = rawData.split('\n').map(id => parseInt(id)).filter(id => !isNaN(id));
       console.log('Current group IDs:', groupIds);
 
-      // Add new group ID if not already present
-      if (!groupIds.includes(groupId)) {
-        groupIds.push(groupId);
+      // Handle add or remove action
+      if (removeGroupId) {
+        if (!groupIds.includes(removeGroupId)) {
+          console.log('Group ID not found:', removeGroupId);
+          return { statusCode: 400, body: JSON.stringify({ error: 'Group ID not found in whitelist' }) };
+        }
+        groupIds = groupIds.filter(id => id !== removeGroupId);
+      } else if (groupId) {
+        if (!groupIds.includes(groupId)) {
+          groupIds.push(groupId);
+        }
       }
 
-      // Create updated raw data with trailing newline
-      const updatedRawData = groupIds.join('\n') + '\n';
+      // Create updated raw data (no trailing newline to match current working format)
+      const updatedRawData = groupIds.length > 0 ? groupIds.join('\n') : '';
 
       // Reconstruct HTML
       updatedHtml = html.slice(0, start + startTag.length) + updatedRawData + html.slice(end);
@@ -146,7 +155,7 @@ exports.handler = async function (event) {
         owner,
         repo,
         path,
-        message: `Add group ID ${groupId}`,
+        message: removeGroupId ? `Remove group ID ${removeGroupId}` : `Add group ID ${groupId}`,
         content: Buffer.from(updatedHtml).toString('base64'),
         sha: fileData.sha,
       });
@@ -156,7 +165,7 @@ exports.handler = async function (event) {
       return { statusCode: 500, body: JSON.stringify({ error: 'Failed to update whitelist.html on GitHub', details: githubError.message }) };
     }
 
-    return { statusCode: 200, body: JSON.stringify({ message: 'Whitelist updated' }) };
+    return { statusCode: 200, body: JSON.stringify({ message: removeGroupId ? 'Group ID removed' : 'Whitelist updated' }) };
   } catch (error) {
     console.error('Function error:', error.message);
     return { statusCode: 500, body: JSON.stringify({ error: 'Something broke', details: error.message }) };
