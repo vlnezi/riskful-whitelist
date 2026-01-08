@@ -1,6 +1,5 @@
 // functions/list-whitelist.js
-// NEW endpoint: returns all whitelisted group IDs
-// POST { secret } → { whitelist: [] }
+// POST { secret } -> { whitelist: [...] }
 
 const { getStore } = require("@netlify/blobs");
 
@@ -13,12 +12,12 @@ exports.handler = async (event) => {
     const body = JSON.parse(event.body || "{}");
     const { secret } = body;
 
-    // same secret your bot already uses
-    if (!process.env.NETLIFY_SECRET || secret !== process.env.NETLIFY_SECRET) {
+    // ✅ use the env var you already have in Netlify: SECRET_KEY
+    const expected = process.env.SECRET_KEY;
+    if (!expected || secret !== expected) {
       return json(401, { error: "Unauthorized" });
     }
 
-    // read from the SAME store used by update-whitelist
     const store = getStore("riskful-whitelist");
     const whitelist = (await store.get("groups", { type: "json" })) || [];
 
