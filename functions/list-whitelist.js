@@ -1,114 +1,95 @@
 // functions/list-whitelist.js
-// Uses the SAME storage method as update-whitelist.js:
-// Reads whitelist.html from GitHub and returns IDs from <pre id="raw-data"> ... </pre>
-//
-// POST { secret } -> { whitelist: [123,456,...] }
 
 exports.handler = async function (event) {
   try {
     const { Octokit } = await import("@octokit/rest");
 
+    // Only allow POST
     if (event.httpMethod !== "POST") {
-      return {
-        statusCode: 405,
-        body: JSON.stringify({ error: "Method Not Allowed" }),
-      };
+      return { statusCode: 405, body: JSON.stringify({ error: "Method Not Allowed" }) };
     }
 
+    // Parse body
     if (!event.body) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: "Empty request body" }),
-      };
+      return { statusCode: 400, body: JSON.stringify({ error: "Empty body" }) };
     }
 
-    let requestBody;
+    let body;
     try {
-      requestBody = JSON.parse(event.body);
-    } catch (parseError) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: "Invalid JSON", details: parseError.message }),
-      };
+      body = JSON.parse(event.body);
+    } catch {
+      return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON" }) };
     }
 
-    const { secret } = requestBody;
+    const { secret } = body;
 
-    // ✅ same secret check style as your update function
     if (secret !== process.env.SECRET_KEY) {
-      return {
-        statusCode: 403,
-        body: JSON.stringify({ error: "Wrong secret" }),
-      };
+      return { statusCode: 403, body: JSON.stringify({ error: "Invalid secret" }) };
     }
 
     const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
     const owner = "vlnezi";
     const repo = "riskful-whitelist";
-    const path = "whitelist.html";
+    const path = "whitelist.json";  // ← changed to JSON!
 
-    let fileData;
+    let response;
     try {
-      const response = await octokit.repos.getContent({ owner, repo, path });
-      fileData = response.data;
-    } catch (githubError) {
-      // if file missing, treat as empty whitelist
-      if (githubError.status === 404) {
+      response = await octokit.repos.getContent({ owner, repo, path });
+    } catch (err) {
+      if (err.status === 404) {
         return {
           statusCode: 200,
-          body: JSON.stringify({ whitelist: [] }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ whitelist: [] })
         };
       }
+      throw err;
+    }
+
+    const content = Buffer.from(response.data.content, "base64").toString("utf-8");
+    let data;
+
+    try {
+      data = JSON.parse(content);
+    } catch {
       return {
         statusCode: 500,
-        body: JSON.stringify({
-          error: "Failed to fetch whitelist.html from GitHub",
-          details: githubError.message,
-        }),
+        body: JSON.stringify({ error: "Invalid JSON in whitelist.json" })
       };
     }
 
-    const html = Buffer.from(fileData.content, "base64").toString("utf8");
-
-    const startTag = '<pre id="raw-data">\\n';
-    const endTag = "</pre>";
-
-    const start = html.indexOf(startTag);
-    const end = html.indexOf(endTag, start);
-
     let groupIds = [];
 
-    if (start === -1 || end === -1) {
-      // Same “repair-ish” fallback idea: extract any lines that are just digits
-      const lines = html
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => /^\d+$/.test(line));
-
-      groupIds = lines.map((id) => parseInt(id, 10)).filter((n) => Number.isFinite(n) && n > 0);
-    } else {
-      const rawData = html.slice(start + startTag.length, end).trim();
-      const lines = rawData
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line !== "");
-
-      groupIds = lines.map((id) => parseInt(id, 10)).filter((n) => Number.isFinite(n) && n > 0);
+    // Support both formats: array directly or { groups: [...] }
+    if (Array.isArray(data)) {
+      groupIds = data;
+    } else if (data && Array.isArray(data.groups)) {
+      groupIds = data.groups;
     }
 
-    // dedupe + sort
-    groupIds = Array.from(new Set(groupIds)).sort((a, b) => a - b);
+    // Clean & validate
+    groupIds = groupIds
+      .map(id => parseInt(id, 10))
+      .filter(id => Number.isSafeInteger(id) && id > 0);
+
+    // Deduplicate + sort (optional)
+    groupIds = [...new Set(groupIds)].sort((a, b) => a - b);
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ whitelist: groupIds }),
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ whitelist: groupIds })
     };
+
   } catch (error) {
+    console.error("list-whitelist error:", error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "Something broke", details: error.message }),
+      body: JSON.stringify({
+        error: "Internal server error",
+        details: error.message
+      })
     };
   }
 };
