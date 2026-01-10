@@ -1,12 +1,9 @@
 {
-  "name": "riskful-functions",
-  "version": "1.1.0",
-  "type": "module",
-  "engines": {
-    "node": ">=20"
-  },
+  "name": "netlify-functions",
+  "version": "1.0.0",
   "dependencies": {
-    "axios": "^1.7.9",
-    "@octokit/rest": "^21.0.2"
+    "axios": "^1.7.7",
+    "@octokit/rest": "^21.0.2",
+    "@netlify/blobs": "^8.0.0"
   }
 }
